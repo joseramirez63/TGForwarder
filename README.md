@@ -89,6 +89,12 @@ python telegram_forwarder.py --disable-console-log
 # Replay messages missed since the last run, then continue live
 python telegram_forwarder.py --catchup
 
+# First run: replay the last 50 messages from each source, then go live
+python telegram_forwarder.py --catchup --catchup-limit 50
+
+# First run: replay the full history from each source, then go live
+python telegram_forwarder.py --catchup --catchup-limit 0
+
 # Use a custom state file location
 python telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
 
@@ -105,7 +111,8 @@ python telegram_forwarder.py -r -q --catchup
 |----------|-------|-------------|
 | `--remove-forward-signature` | `-r` | Remove "Forward from..." signature by sending as new messages instead of forwarding |
 | `--disable-console-log` | `-q` | Disable console logging (only log to telegram_forwarder.log file) |
-| `--catchup` | | Forward messages missed since the last run before resuming live forwarding |
+| `--catchup` | | Forward messages missed since the last run before resuming live forwarding. If no prior state exists, performs an initial catchup (see `--catchup-limit`) |
+| `--catchup-limit N` | | Maximum messages to fetch during an **initial** catchup (no prior state). `0` = full history (default). `N > 0` = last N messages only |
 | `--state-file FILE` | | Path to the JSON state file (default: `forwarder_state.json`) |
 | `--reset-state` | | Delete the state file before starting so all positions are forgotten |
 
@@ -209,11 +216,36 @@ This allows it to resume after a restart without forwarding duplicates or losing
 When started with `--catchup`, the forwarder will:
 
 1. Read the state file to find the last known message ID for each source.
-2. Fetch and forward all messages that arrived after that ID (in chronological order).
-3. Switch to normal live-forwarding once catchup is complete.
+2. **Incremental catchup** (state exists): fetch and forward all messages that arrived after that ID, in chronological order.
+3. **Initial catchup** (no state yet): fetch and forward messages from scratch, controlled by `--catchup-limit`.
+4. Switch to normal live-forwarding once catchup is complete.
 
-> **Note**: Catchup only works for sources that already have a recorded position in the state file.  
-> On the very first run there is no state yet, so start the forwarder without `--catchup` and let it record a baseline.
+#### `--catchup-limit N`
+
+Controls how many messages are fetched during an **initial** catchup (i.e. when no state file exists for a source):
+
+| Value | Behaviour |
+|-------|-----------|
+| `0` (default) | Fetch the **full history** of the source chat |
+| `N > 0` | Fetch only the **last N messages** of the source chat |
+
+Messages are always forwarded in chronological order (oldest first).
+
+**Examples**
+
+```bash
+# First run – replay the last 50 messages from each source, then go live
+python telegram_forwarder.py --catchup --catchup-limit 50
+
+# First run – replay the entire history of each source, then go live
+python telegram_forwarder.py --catchup --catchup-limit 0
+
+# Subsequent runs – incremental catchup (--catchup-limit is ignored when state exists)
+python telegram_forwarder.py --catchup
+```
+
+> **Note**: After an initial catchup the state file is updated to the most recent message ID from the catchup batch.  
+> Subsequent runs with `--catchup` will therefore only forward messages that arrived after that point (incremental mode).
 
 ### Resetting state (`--reset-state`)
 
