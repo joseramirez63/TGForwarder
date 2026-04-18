@@ -15,7 +15,7 @@ load_dotenv()
 MAX_RETRIES = 5
 
 # Delay in seconds between forwarded messages during catchup to reduce rate-limit risk
-CATCHUP_DELAY = 1.0
+CATCHUP_DELAY = 10.0
 
 
 def setup_logging(disable_console=False):
