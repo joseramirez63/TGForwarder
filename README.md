@@ -27,13 +27,14 @@ A Python script using Telethon to automatically forward messages from a source c
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/Linuxmaster14/TGForwarder.git
+git clone https://github.com/Linuxmaster14/TGForwarder.git](https://github.com/joseramirez63/TGForwarder.git
 cd TGForwarder
 ```
 
 2. Install the required dependencies:
 ```bash
-pip install -r requirements.txt
+apt install python3-pip -y
+pip3 install -r requirements.txt
 ```
 
 3. Create a `.env` file based on the example:
@@ -78,28 +79,28 @@ Run the script with various options:
 python telegram_forwarder.py
 
 # Remove "Forward from..." signature (sends as new messages)
-python telegram_forwarder.py --remove-forward-signature
+python3 telegram_forwarder.py --remove-forward-signature
 
 # Disable console logging (only log to file)
-python telegram_forwarder.py --disable-console-log
+python3 telegram_forwarder.py --disable-console-log
 
 # Replay messages missed since the last run, then continue live
-python telegram_forwarder.py --catchup
+python3 telegram_forwarder.py --catchup
 
 # First run: replay the last 50 messages from each source, then go live
-python telegram_forwarder.py --catchup --catchup-limit 50
+python3 telegram_forwarder.py --catchup --catchup-limit 50
 
 # First run: replay the full history from each source, then go live
-python telegram_forwarder.py --catchup --catchup-limit 0
+python3 telegram_forwarder.py --catchup --catchup-limit 0
 
 # Use a custom state file location
-python telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
+python3 telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
 
 # Forget all previously tracked positions and start fresh
-python telegram_forwarder.py --reset-state
+python3 telegram_forwarder.py --reset-state
 
 # Combine options
-python telegram_forwarder.py -r -q --catchup
+python3 telegram_forwarder.py -r -q --catchup
 ```
 
 ### Command Line Arguments
@@ -250,7 +251,7 @@ Use `--reset-state` to delete the state file before starting.
 This is useful when you want to change your forwarding rules completely or recover from a corrupted state.
 
 ```bash
-python telegram_forwarder.py --reset-state
+python3 telegram_forwarder.py --reset-state
 ```
 
 ### Custom state file (`--state-file`)
@@ -258,7 +259,7 @@ python telegram_forwarder.py --reset-state
 Keep the state file anywhere you like:
 
 ```bash
-python telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
+python3 telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
 ```
 
 ## Anti-FloodWait Retries
@@ -314,7 +315,7 @@ Use `--reset-state` to wipe the saved position before starting the full-history 
 
 ```bash
 # Replay the FULL history of every source, then switch to live forwarding
-python telegram_forwarder.py --reset-state --catchup --catchup-limit 0
+python3 telegram_forwarder.py --reset-state --catchup --catchup-limit 0
 ```
 
 > **Warning**: `--reset-state` deletes the state file. If you run the script again afterwards **without** `--catchup`, new messages will be forwarded normally, but re-running with `--catchup --catchup-limit 0` again would replay everything from the start. Use this only when you intentionally want to start over.
@@ -323,7 +324,7 @@ If you only want to replay a limited number of recent messages instead of the en
 
 ```bash
 # Reset and replay the last 100 messages from each source
-python telegram_forwarder.py --reset-state --catchup --catchup-limit 100
+python3 telegram_forwarder.py --reset-state --catchup --catchup-limit 100
 ```
 
 After the catchup finishes, the state file is updated to the most recent replayed message ID, so subsequent runs with `--catchup` will only forward new messages (incremental mode) and will not replay history again.
