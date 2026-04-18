@@ -64,13 +64,10 @@ FORWARDING_RULES=-1001111111111:-1002222222222,-1003333333333:-1004444444444
 
 To find chat IDs, you can:
 
-1. **For private chats**: Use the user's ID (positive number)
-2. **For groups/channels**: Use the negative ID format
-   - For groups: `-100` + group ID (e.g., `-1001234567890`)
-   - For channels: `-100` + channel ID (e.g., `-1001234567890`)
+1. **For your own user ID**: Send any message to [@userinfobot](https://t.me/userinfobot) and it will reply with your numeric user ID.
+2. **For groups or channels**: Add [@getidsbot](https://t.me/getidsbot) to the group or channel. Once it is a member, it will display the chat ID. You can remove it afterwards.
+   - The ID will be in negative format: `-100` + the numeric ID (e.g., `-1001234567890`)
 3. **For Saved Messages**: Use the special value `me`
-
-You can use tools like [@userinfobot](https://t.me/userinfobot) or [@get_id_bot](https://t.me/get_id_bot) to get chat IDs.
 
 ## Usage
 
@@ -302,6 +299,34 @@ The script provides detailed logging including:
 - **Remove signature** (`-r` flag): Messages are sent as new messages without the forward signature
 
 ## Troubleshooting
+
+### Catchup not replaying old messages (previous run without `--catchup`)
+
+This is a common situation: you ran the script once **without** `--catchup` to test it, new messages were forwarded normally, and now when you run it **with** `--catchup` hoping to replay your full history, nothing old is forwarded.
+
+**Why it happens**
+
+Every time the forwarder successfully forwards a message it saves the message ID to the state file (`forwarder_state.json`). On the next run, `--catchup` reads that saved ID and fetches only messages that arrived **after** it — this is the *incremental* mode. All messages older than the saved ID are intentionally skipped to avoid duplicates.
+
+**How to fix it**
+
+Use `--reset-state` to wipe the saved position before starting the full-history catchup:
+
+```bash
+# Replay the FULL history of every source, then switch to live forwarding
+python telegram_forwarder.py --reset-state --catchup --catchup-limit 0
+```
+
+> **Warning**: `--reset-state` deletes the state file. If you run the script again afterwards **without** `--catchup`, new messages will be forwarded normally, but re-running with `--catchup --catchup-limit 0` again would replay everything from the start. Use this only when you intentionally want to start over.
+
+If you only want to replay a limited number of recent messages instead of the entire history:
+
+```bash
+# Reset and replay the last 100 messages from each source
+python telegram_forwarder.py --reset-state --catchup --catchup-limit 100
+```
+
+After the catchup finishes, the state file is updated to the most recent replayed message ID, so subsequent runs with `--catchup` will only forward new messages (incremental mode) and will not replay history again.
 
 ### Common Issues
 
