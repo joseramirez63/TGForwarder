@@ -7,10 +7,13 @@ A Python script using Telethon to automatically forward messages from a source c
 - Forward messages from any Telegram chat, group, or channel
 - **Multiple source/target mapping support**
 - **One-to-many and many-to-one forwarding**
+- **Saved Messages (`me`) support as source or target**
 - Support for both user accounts and bot accounts
 - Optional removal of "Forward from..." signature
 - Optional quiet mode for console logging
-- Automatic handling of rate limits
+- **Catchup mode** – replay missed messages on restart
+- **JSON state persistence** – tracks the last processed message per source
+- **Anti-FloodWait retries** – automatic back-off and retry on rate limits
 - Comprehensive logging
 - Easy configuration via environment variables
 
@@ -65,6 +68,7 @@ To find chat IDs, you can:
 2. **For groups/channels**: Use the negative ID format
    - For groups: `-100` + group ID (e.g., `-1001234567890`)
    - For channels: `-100` + channel ID (e.g., `-1001234567890`)
+3. **For Saved Messages**: Use the special value `me`
 
 You can use tools like [@userinfobot](https://t.me/userinfobot) or [@get_id_bot](https://t.me/get_id_bot) to get chat IDs.
 
@@ -82,8 +86,17 @@ python telegram_forwarder.py --remove-forward-signature
 # Disable console logging (only log to file)
 python telegram_forwarder.py --disable-console-log
 
-# Use both options
-python telegram_forwarder.py -r -q
+# Replay messages missed since the last run, then continue live
+python telegram_forwarder.py --catchup
+
+# Use a custom state file location
+python telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
+
+# Forget all previously tracked positions and start fresh
+python telegram_forwarder.py --reset-state
+
+# Combine options
+python telegram_forwarder.py -r -q --catchup
 ```
 
 ### Command Line Arguments
@@ -92,6 +105,9 @@ python telegram_forwarder.py -r -q
 |----------|-------|-------------|
 | `--remove-forward-signature` | `-r` | Remove "Forward from..." signature by sending as new messages instead of forwarding |
 | `--disable-console-log` | `-q` | Disable console logging (only log to telegram_forwarder.log file) |
+| `--catchup` | | Forward messages missed since the last run before resuming live forwarding |
+| `--state-file FILE` | | Path to the JSON state file (default: `forwarder_state.json`) |
+| `--reset-state` | | Delete the state file before starting so all positions are forgotten |
 
 ### First Run
 
@@ -109,15 +125,16 @@ The script will run continuously and forward any new messages from the source to
 | `API_ID` | Yes | Your Telegram API ID |
 | `API_HASH` | Yes | Your Telegram API Hash |
 | `BOT_TOKEN` | No | Bot token for bot mode (leave empty for user mode) |
-| `SOURCE_ID` | No* | ID of the source chat/group/channel (legacy single mode) |
-| `TARGET_ID` | No* | ID of the target chat/group/channel (legacy single mode) |
+| `SOURCE_ID` | No* | ID of the source chat/group/channel, or `me` (legacy single mode) |
+| `TARGET_ID` | No* | ID of the target chat/group/channel, or `me` (legacy single mode) |
 | `FORWARDING_RULES` | No* | Multiple forwarding rules (see format below) |
 
 *Either `SOURCE_ID`/`TARGET_ID` OR `FORWARDING_RULES` must be provided.
 
 ### Forwarding Rules Format
 
-The `FORWARDING_RULES` environment variable supports flexible mapping:
+The `FORWARDING_RULES` environment variable supports flexible mapping.  
+Use `me` (case-insensitive) anywhere in place of a numeric ID to refer to your **Saved Messages** chat.
 
 **Format**: `source_id:target_id1:target_id2,source_id2:target_id3`
 
@@ -131,6 +148,12 @@ FORWARDING_RULES=-1001111111111:-1002222222222:-1003333333333
 
 # Many-to-one (multiple sources to one target)
 FORWARDING_RULES=-1001111111111:-1004444444444,-1002222222222:-1004444444444
+
+# Saved Messages as source (forward your own saved messages to a group)
+FORWARDING_RULES=me:-1001111111111
+
+# Saved Messages as target (archive a channel into your Saved Messages)
+FORWARDING_RULES=-1001111111111:me
 
 # Complex mapping
 FORWARDING_RULES=-1001111111111:-1002222222222,-1001111111111:-1003333333333,-1004444444444:-1005555555555
@@ -169,18 +192,72 @@ FORWARDING_RULES=-1001111111111:-1002222222222,-1001111111111:-1003333333333,-10
 - **User Mode**: Uses your personal Telegram account. Can access any chat you're a member of.
 - **Bot Mode**: Uses a bot account. The bot must be added to both source and target chats with appropriate permissions.
 
+## State Persistence & Catchup
+
+The forwarder saves the **last processed message ID** for every source channel in a JSON file (default: `forwarder_state.json`).  
+This allows it to resume after a restart without forwarding duplicates or losing messages.
+
+```json
+{
+  "-1001111111111": 123456,
+  "987654321": 78900
+}
+```
+
+### Catchup mode (`--catchup`)
+
+When started with `--catchup`, the forwarder will:
+
+1. Read the state file to find the last known message ID for each source.
+2. Fetch and forward all messages that arrived after that ID (in chronological order).
+3. Switch to normal live-forwarding once catchup is complete.
+
+> **Note**: Catchup only works for sources that already have a recorded position in the state file.  
+> On the very first run there is no state yet, so start the forwarder without `--catchup` and let it record a baseline.
+
+### Resetting state (`--reset-state`)
+
+Use `--reset-state` to delete the state file before starting.  
+This is useful when you want to change your forwarding rules completely or recover from a corrupted state.
+
+```bash
+python telegram_forwarder.py --reset-state
+```
+
+### Custom state file (`--state-file`)
+
+Keep the state file anywhere you like:
+
+```bash
+python telegram_forwarder.py --state-file /var/lib/tgforwarder/state.json
+```
+
+## Anti-FloodWait Retries
+
+All Telegram API calls that forward or send messages are wrapped in an automatic retry loop.  
+If Telegram responds with a `FloodWaitError`, the script:
+
+1. Logs the required wait time.
+2. Sleeps for `wait + 1` seconds.
+3. Retries the same call (up to **5** attempts by default).
+4. Skips the message and logs an error only if all retries are exhausted.
+
+This prevents the forwarder from crashing during high-volume forwarding sessions.
+
 ## Important Notes
 
-1. **Rate Limits**: The script automatically handles Telegram's rate limits
+1. **Rate Limits**: The script automatically handles Telegram's rate limits with retries and back-off
 2. **Permissions**: Ensure the account/bot has necessary permissions in both source and target chats
 3. **Privacy**: Be mindful of privacy and legal considerations when forwarding messages
 4. **Session Files**: The script creates session files (`user_session.session` or `bot_session.session`) to avoid re-authentication
+5. **Saved Messages**: Using `me` as source or target requires **user mode** (not bot mode)
 
 ## Logging
 
 The script provides detailed logging including:
 - Connection status
 - Message forwarding events
+- Catchup progress
 - Error handling
 - Rate limit notifications
 
@@ -199,12 +276,13 @@ The script provides detailed logging including:
 1. **Authentication Failed**: Check your API credentials
 2. **Permission Denied**: Ensure the account/bot has access to both chats
 3. **Invalid Chat ID**: Verify the chat IDs are correct
-4. **Rate Limited**: The script handles this automatically, but frequent rate limits may indicate too much activity
+4. **Rate Limited**: The script handles this automatically with retries
+5. **Saved Messages not working**: Make sure you are running in user mode (no `BOT_TOKEN`)
 
 ### Error Messages
 
 - `Missing required environment variables`: Check your `.env` file
-- `SOURCE_ID and TARGET_ID must be valid integers`: Ensure IDs are numbers
+- `SOURCE_ID and TARGET_ID must be valid integers or 'me'`: Ensure IDs are numbers or the literal string `me`
 - `Error getting entity info`: The account/bot cannot access the specified chat
 
 ## License
