@@ -7,7 +7,7 @@ A Python script using Telethon to automatically forward messages from a source c
 - Forward messages from any Telegram chat, group, or channel
 - **Multiple source/target mapping support**
 - **One-to-many and many-to-one forwarding**
-- **Saved Messages (`me`) support as source or target**
+- **Saved Messages support as source or target (use your numeric user ID)**
 - Support for both user accounts and bot accounts
 - Optional removal of "Forward from..." signature
 - Optional quiet mode for console logging
@@ -65,10 +65,9 @@ FORWARDING_RULES=-1001111111111:-1002222222222,-1003333333333:-1004444444444
 
 To find chat IDs, you can:
 
-1. **For your own user ID**: Send any message to [@userinfobot](https://t.me/userinfobot) and it will reply with your numeric user ID.
+1. **For your own user ID (Saved Messages)**: Send any message to [@userinfobot](https://t.me/userinfobot) and it will reply with your numeric user ID. Use this numeric ID when you want to use your Saved Messages as a source or target.
 2. **For groups or channels**: Add [@getidsbot](https://t.me/getidsbot) to the group or channel. Once it is a member, it will display the chat ID. You can remove it afterwards.
    - The ID will be in negative format: `-100` + the numeric ID (e.g., `-1001234567890`)
-3. **For Saved Messages**: Use the special value `me`
 
 ## Usage
 
@@ -130,8 +129,8 @@ The script will run continuously and forward any new messages from the source to
 | `API_ID` | Yes | Your Telegram API ID |
 | `API_HASH` | Yes | Your Telegram API Hash |
 | `BOT_TOKEN` | No | Bot token for bot mode (leave empty for user mode) |
-| `SOURCE_ID` | No* | ID of the source chat/group/channel, or `me` (legacy single mode) |
-| `TARGET_ID` | No* | ID of the target chat/group/channel, or `me` (legacy single mode) |
+| `SOURCE_ID` | No* | ID of the source chat/group/channel (legacy single mode) |
+| `TARGET_ID` | No* | ID of the target chat/group/channel (legacy single mode) |
 | `FORWARDING_RULES` | No* | Multiple forwarding rules (see format below) |
 
 *Either `SOURCE_ID`/`TARGET_ID` OR `FORWARDING_RULES` must be provided.
@@ -139,7 +138,8 @@ The script will run continuously and forward any new messages from the source to
 ### Forwarding Rules Format
 
 The `FORWARDING_RULES` environment variable supports flexible mapping.  
-Use `me` (case-insensitive) anywhere in place of a numeric ID to refer to your **Saved Messages** chat.
+Use your **numeric user ID** (obtained from [@userinfobot](https://t.me/userinfobot)) anywhere in place of a chat ID to refer to your **Saved Messages** chat.  
+> **Note**: The special keyword `me` may not work in all environments. It is recommended to use your numeric user ID instead.
 
 **Format**: `source_id:target_id1:target_id2,source_id2:target_id3`
 
@@ -155,10 +155,12 @@ FORWARDING_RULES=-1001111111111:-1002222222222:-1003333333333
 FORWARDING_RULES=-1001111111111:-1004444444444,-1002222222222:-1004444444444
 
 # Saved Messages as source (forward your own saved messages to a group)
-FORWARDING_RULES=me:-1001111111111
+# Replace 123456789 with your own numeric user ID from @userinfobot
+FORWARDING_RULES=123456789:-1001111111111
 
 # Saved Messages as target (archive a channel into your Saved Messages)
-FORWARDING_RULES=-1001111111111:me
+# Replace 123456789 with your own numeric user ID from @userinfobot
+FORWARDING_RULES=-1001111111111:123456789
 
 # Complex mapping
 FORWARDING_RULES=-1001111111111:-1002222222222,-1001111111111:-1003333333333,-1004444444444:-1005555555555
@@ -280,7 +282,7 @@ This prevents the forwarder from crashing during high-volume forwarding sessions
 2. **Permissions**: Ensure the account/bot has necessary permissions in both source and target chats
 3. **Privacy**: Be mindful of privacy and legal considerations when forwarding messages
 4. **Session Files**: The script creates session files (`user_session.session` or `bot_session.session`) to avoid re-authentication
-5. **Saved Messages**: Using `me` as source or target requires **user mode** (not bot mode)
+5. **Saved Messages**: To use your Saved Messages as source or target, use your **numeric user ID** (get it from [@userinfobot](https://t.me/userinfobot)). This requires **user mode** (no `BOT_TOKEN`). Note: the keyword `me` may not work in all environments.
 
 ## Logging
 
@@ -335,12 +337,12 @@ After the catchup finishes, the state file is updated to the most recent replaye
 2. **Permission Denied**: Ensure the account/bot has access to both chats
 3. **Invalid Chat ID**: Verify the chat IDs are correct
 4. **Rate Limited**: The script handles this automatically with retries
-5. **Saved Messages not working**: Make sure you are running in user mode (no `BOT_TOKEN`)
+5. **Saved Messages not working**: Make sure you are running in user mode (no `BOT_TOKEN`) and that you are using your **numeric user ID** instead of `me`. Get your ID by messaging [@userinfobot](https://t.me/userinfobot).
 
 ### Error Messages
 
 - `Missing required environment variables`: Check your `.env` file
-- `SOURCE_ID and TARGET_ID must be valid integers or 'me'`: Ensure IDs are numbers or the literal string `me`
+- `SOURCE_ID and TARGET_ID must be valid integers`: Ensure IDs are numbers
 - `Error getting entity info`: The account/bot cannot access the specified chat
 
 ## License
