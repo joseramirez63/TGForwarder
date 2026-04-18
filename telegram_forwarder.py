@@ -70,13 +70,15 @@ async def with_flood_wait(coro_func, max_retries=MAX_RETRIES):
 
 class TelegramForwarder:
     def __init__(self, remove_forward_signature=False, catchup=False,
-                 state_file='forwarder_state.json', reset_state=False):
+                 catchup_limit=0, state_file='forwarder_state.json',
+                 reset_state=False):
         """Initialize the Telegram forwarder with environment variables."""
         self.api_id = os.getenv('API_ID')
         self.api_hash = os.getenv('API_HASH')
         self.bot_token = os.getenv('BOT_TOKEN')
         self.remove_forward_signature = remove_forward_signature
         self.catchup = catchup
+        self.catchup_limit = catchup_limit
         self.state_file = state_file
 
         # Check for legacy single source/target configuration
@@ -358,20 +360,67 @@ class TelegramForwarder:
     # ------------------------------------------------------------------
 
     async def _catchup_source(self, source_id, target_ids):
-        """Forward messages that arrived since the last known message ID."""
+        """Forward messages that arrived since the last known message ID.
+
+        If no prior state exists, performs an initial catchup: fetching the
+        last ``catchup_limit`` messages (or the full history when
+        ``catchup_limit == 0``) and forwarding them in chronological order.
+        """
         key = str(source_id)
         last_id = self.state.get(key)
+        source_info = await self.get_entity_info(source_id)
 
         if last_id is None:
+            limit = self.catchup_limit if self.catchup_limit > 0 else None
+            limit_desc = str(self.catchup_limit) if self.catchup_limit > 0 else "unlimited"
             logger.info(
-                f"No previous state for source {source_id}, skipping catchup. "
-                "State will be initialised from the first live message."
+                f"No previous state for source {source_info}; "
+                f"performing initial catchup (limit={limit_desc})…"
+            )
+
+            count = 0
+            if limit is None:
+                # No limit: stream from oldest to newest directly to avoid
+                # loading the entire history into memory.
+                async for message in self.client.iter_messages(
+                    source_id, reverse=True
+                ):
+                    if not message.message and not message.media:
+                        continue
+                    await self._forward_message(message, source_id, target_ids)
+                    count += 1
+                    if count % 10 == 0:
+                        logger.info(
+                            f"Initial catchup progress for {source_info}: {count} messages forwarded"
+                        )
+                    await asyncio.sleep(CATCHUP_DELAY)
+            else:
+                # Limited: collect the newest N messages then forward in
+                # chronological order (oldest first).
+                messages = []
+                async for message in self.client.iter_messages(source_id, limit=limit):
+                    if not message.message and not message.media:
+                        continue
+                    messages.append(message)
+
+                messages.reverse()
+
+                for message in messages:
+                    await self._forward_message(message, source_id, target_ids)
+                    count += 1
+                    if count % 10 == 0:
+                        logger.info(
+                            f"Initial catchup progress for {source_info}: {count} messages forwarded"
+                        )
+                    await asyncio.sleep(CATCHUP_DELAY)
+
+            logger.info(
+                f"Initial catchup complete for {source_info}: {count} messages forwarded"
             )
             return
 
-        source_info = await self.get_entity_info(source_id)
         logger.info(
-            f"Catching up messages after ID {last_id} for {source_info}"
+            f"Incremental catchup after last_id={last_id} for {source_info}…"
         )
 
         count = 0
@@ -472,7 +521,17 @@ async def main():
         '--catchup', action='store_true',
         help=(
             'Forward messages missed since the last run before starting live '
-            'forwarding (requires a previously saved state file)'
+            'forwarding. If no prior state exists, performs an initial catchup '
+            'controlled by --catchup-limit.'
+        ),
+    )
+    parser.add_argument(
+        '--catchup-limit', type=int, default=0, metavar='N',
+        help=(
+            'Maximum number of messages to fetch during an initial catchup '
+            '(when no prior state exists). '
+            '0 = no limit (fetch full history). '
+            'N > 0 = fetch only the last N messages (default: 0).'
         ),
     )
     parser.add_argument(
@@ -496,6 +555,7 @@ async def main():
         forwarder = TelegramForwarder(
             remove_forward_signature=args.remove_forward_signature,
             catchup=args.catchup,
+            catchup_limit=args.catchup_limit,
             state_file=args.state_file,
             reset_state=args.reset_state,
         )
